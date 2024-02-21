@@ -43,7 +43,7 @@ end
 # Question 3
 ############
 
-m = DenseGridWorld()
+m = HW3.DenseGridWorld(seed=4)
 
 S = statetype(m)
 A = actiontype(m)
