@@ -134,7 +134,7 @@ function policyGradEpisode!(env, θ; ϵ=0.10, α=0.05)
     start = time()
     
     A = collect(actions(env))
-    function policy(s)
+    function policy(s,θ)
         # if rand() < ϵ
         #     return rand(actions(env))
         # else
@@ -173,18 +173,22 @@ function policyGradEpisode!(env, θ; ϵ=0.10, α=0.05)
     hist = []
     d = 0
     R = 0
+    rsum = 0
     while !terminated(env)
         d +=1
         s = observe(env)
-        a = policy(s)
+        a = policy(s, θ)
         r = act!(env, a)
         path = push!(path, (s,a,r))
         R += r
+        # r_sum += R
         push!(hist,[s])
         push!(gradPolicy, gradLogPi(env, θ[s], a))
     end
     for k in 1:d
-        gradU = sum(gradPolicy[1:k])*R
+        # r_togo = sum(R)-r_sum
+        # gradU = sum(gradPolicy[k:end]*r_togo[k:d])
+        gradU = gradPolicy[k]*R
         s = path[k][1]
         θ[s] += α*gradU
         R = R - path[k][3]
@@ -210,10 +214,10 @@ function policyGradient(env, n_episodes; ϵ=0.10, α=0.05)
     return episodes
 end
 
-function learningCurve_steps(env,episodes)
+function learningCurve_steps(env,episodes, n_episodes)
     p1 = plot(xlabel="steps in environment", ylabel="avg return")
-    n = 20
-    stop = 50000
+    n = convert(Int64,floor(n_episodes/15))
+    stop = n_episodes
     for (name, eps) in episodes
         if(name == "SARSA-λ")
             Q = Dict((s, a) => 0.0 for s in observations(env), a in actions(env))
@@ -229,12 +233,12 @@ function learningCurve_steps(env,episodes)
             xs = [0]
             thetas = Dict((s) => 0.5*ones(4) for s in observations(env))
             # ys = [mean(evaluate(env, s->actions(env)[argmax(thetas[s])]))]
-            ys = [mean(evaluate(env, s->eps[1].policy(s)))]
+            ys = [mean(evaluate(env, s->eps[1].policy(s,thetas)))]
             for i in n:n:min(stop, length(eps))
                 newsteps = sum(length(ep.hist) for ep in eps[i-n+1:i])
                 push!(xs, last(xs) + newsteps)
                 thetas = eps[i].θ
-                push!(ys, mean(evaluate(env, s->eps[i].policy(s))))
+                push!(ys, mean(evaluate(env, s->eps[i].policy(s, thetas))))
             end
         end    
         plot!(p1, xs, ys, label=name)
@@ -242,10 +246,10 @@ function learningCurve_steps(env,episodes)
     display(p1)
 end
 
-function learningCurve_time(env,episodes)
+function learningCurve_time(env,episodes, n_episodes)
     p2 = plot(xlabel="wall clock time", ylabel="avg return")
-    n = 20
-    stop = 50000
+    n = convert(Int64,floor(n_episodes/15))
+    stop = n_episodes
     for (name, eps) in episodes
         if(name == "SARSA-λ")
             Q = Dict((s, a) => 0.0 for s in observations(env), a in actions(env))
@@ -261,12 +265,12 @@ function learningCurve_time(env,episodes)
             xs = [0.0]
             thetas = Dict((s) => 0.5*ones(4) for s in observations(env))
             # ys = [mean(evaluate(env, s->actions(env)[argmax(thetas[s])]))]
-            ys = [mean(evaluate(env, s->eps[1].policy(s)))]
+            ys = [mean(evaluate(env, s->eps[1].policy(s, thetas)))]
             for i in n:n:min(stop, length(eps))
                 newtime = sum(ep.time for ep in eps[i-n+1:i])
                 push!(xs, last(xs) + newtime)
                 thetas = eps[i].θ
-                push!(ys, mean(evaluate(env, s->eps[i].policy(s))))
+                push!(ys, mean(evaluate(env, s->eps[i].policy(s, thetas))))
             end
         end    
         plot!(p2, xs, ys, label=name)
@@ -275,12 +279,12 @@ function learningCurve_time(env,episodes)
 end
 
 env = gw
-n_episodes=50000
+n_eps= 150000
 # alpha = 0.9
 # ϵ = 0.1
-PolicyGrad_episodes = policyGradient(env, n_episodes; α=0.7, ϵ=0)
-lambda_episodes = sarsa_lambda!(env, n_episodes=50000, α=0.1, λ=0.3);
+PolicyGrad_episodes = policyGradient(env, n_eps; α=0.7, ϵ=0)
+lambda_episodes = sarsa_lambda!(env, n_episodes=n_eps, α=0.1, λ=0.3);
 display(render(env))
 episodes = Dict("Policy Gradient"=>PolicyGrad_episodes, "SARSA-λ"=>lambda_episodes)
-learningCurve_steps(env,episodes)
-learningCurve_time(env,episodes)
+learningCurve_steps(env, episodes, n_eps)
+learningCurve_time(env, episodes, n_eps)
