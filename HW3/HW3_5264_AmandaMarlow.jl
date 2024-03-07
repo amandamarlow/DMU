@@ -6,6 +6,7 @@ using D3Trees: inchrome, inbrowser
 using StaticArrays: SA
 using Statistics: mean, std
 using BenchmarkTools: @btime
+using LinearAlgebra
 
 
 ############
@@ -27,7 +28,7 @@ function rollout(mdp, policy_function, s0, max_steps=100)
 end
 
 
-function heuristic_policy(mdp, s) # similar to random :(
+function heuristic_policy(mdp, s)
     
     gridSize = 100
     
@@ -57,21 +58,6 @@ function heuristic_policy(mdp, s) # similar to random :(
     return a
 end
 
-# function heuristic_policy(m, s) # ~16 points better than random
-#     # put a smarter heuristic policy here
-#     A = collect(actions(m))
-#     remainder = mod.(s, 20)
-#     r = Vector{Float64}(undef, 4)
-#     for (i, a) in enumerate(A)
-#         sp = @gen(:sp)(m, s, a)
-#         r[i] = @gen(:r)(m, sp, a)
-#     end
-#     # @show r
-#     a = A[argmax(r)]
-
-#     return a
-# end
-
 function random_policy(m, s)
     return rand(actions(m))
 end
@@ -88,8 +74,8 @@ function get_mean_SEM(data::Vector{Float64})
 end
 
 
-# m = HW3.DenseGridWorld(seed=3)
-# iterations = 500
+m = HW3.DenseGridWorld(seed=3)
+iterations = 500
 
 # results_random = [rollout(m, random_policy, rand(initialstate(m))) for _ in 1:iterations]
 # mean_random, SEM_random = get_mean_SEM(results_random)
@@ -143,7 +129,7 @@ end
 # Question 3
 ############
 
-# mdp = DenseGridWorld(seed=4)
+mdp = DenseGridWorld(seed=4)
 # nsims = 7
 # c = 200
 # s = SA[19,19]
@@ -153,7 +139,7 @@ end
 # Q = Dict{Tuple{S, A}, Float64}()
 # T = Dict{Tuple{S, A, S}, Int}()
 # d = 50;
-# for k in 1:nSims
+# for k in 1:nsims
 #     simulate!(mdp, s, d, N, Q, T)
 # end
 
@@ -187,43 +173,28 @@ end
 
 # @btime SelectAction(mdp, SA[35,35], nsims = 1000)
 
-function rolloutQ4_rand(mdp, policy_function, s0, max_steps=100)
+
+function rolloutQ4(mdp, s0, max_steps=100)
     r_total = 0
     t = 0
     s = s0
     while !isterminal(mdp, s) && t < max_steps
-        a = policy_function(m, s)
+        a = SelectAction(mdp, s; nsims=1000)
         s, r = @gen(:sp, :r)(mdp, s, a)
+        # @show r
+        # @show s
         r_total += r
         t += 1
     end
     return r_total
 end
 
-function rolloutQ4(mdp, policy_function, s0, n, max_steps=100)
-    r_total = 0
-    t = 0
-    s = s0
-    while !isterminal(mdp, s) && t < max_steps
-        a = policy_function(m, s, nsims=n)
-        s, r = @gen(:sp, :r)(mdp, s, a)
-        r_total += r
-        t += 1
-    end
-    return r_total
-end
+iterations = 100;
 
-# iterations = 100;
-# results_random = [rolloutQ4_rand(mdp, random_policy, rand(initialstate(mdp))) for _ in 1:iterations]
-# mean_random, SEM_random = get_mean_SEM(results_random)
-# @show mean_random
-# # @show SEM_random
-
-# results_MCTS = [rolloutQ4(mdp, SelectAction, rand(initialstate(mdp)), 1000) for _ in 1:iterations]
+# results_MCTS = [rolloutQ4(mdp, rand(initialstate(mdp))) for _ in 1:iterations]
 # mean_MCTS, SEM_MCTS = get_mean_SEM(results_MCTS)
 # @show mean_MCTS
 # @show SEM_MCTS
-# println("MCTS Policy Improvement: ", mean_MCTS-mean_random)
 
 ############
 # Question 5
