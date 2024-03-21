@@ -116,7 +116,7 @@ function dqn(env)
         if rtot[i] > rbest
             Qbest = deepcopy(Q)
             rbest = copy(rtot[i])
-            # buffer = []
+            buffer = []
         # else
         #     Q = deepcopy(Qbest)
         end
