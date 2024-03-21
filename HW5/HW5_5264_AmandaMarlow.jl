@@ -41,7 +41,7 @@ end
 function dqn(env)
 
     epochs = 1000
-    updateQ = 10
+    updateQ = 1000
     buffSize = 100_000
     sampleSize = 1000
     gamma = 0.99
@@ -58,9 +58,10 @@ function dqn(env)
     steps = 0
     i = 0
     # for i = 1:epochs
-    while steps < 50_000
+    while (steps < 100_000) || (rtot[i-1]>45)
         i += 1
-        print("epoch = ", i, "\n")
+        # print("epoch = ", i, "\n")
+        print(steps, " steps\n")
         RL.reset!(env)
         done = terminated(env)
         j = 0
@@ -82,34 +83,51 @@ function dqn(env)
                 popfirst!(buffer)
             end
 
+            function loss(Q, s, a_ind, r, sp, done)
+                if done
+                    return (r - Q(s)[a_ind])^2
+                end
+                return (r + gamma*maximum(Qp(sp)) - Q(s)[a_ind])^2
+            end
+
+            if mod(steps, 100) == 0
+                data = rand(buffer, sampleSize)
+                Flux.Optimise.train!(loss, Q, data, opt)
+            end
+
+            if mod(steps,updateQ) == 0
+                Qp = deepcopy(Q)
+            end
+
             eps = max(0.05, eps-(1-0.05)/100_000)
         end
         
         # loss function for Q training here
-        function loss(Q, s, a_ind, r, sp, done)
-            if done
-                return (r - Q(s)[a_ind])^2
-            end
-            return (r + gamma*maximum(Qp(sp)) - Q(s)[a_ind])^2
-        end
+        # function loss(Q, s, a_ind, r, sp, done)
+        #     if done
+        #         return (r - Q(s)[a_ind])^2
+        #     end
+        #     return (r + gamma*maximum(Qp(sp)) - Q(s)[a_ind])^2
+        # end
 
-        data = rand(buffer, sampleSize)
 
         push!(rtot, HW5.evaluate(s->actions(env)[argmax(Q(s[1:2]))], n_episodes=100)[1])
+        print(rtot[i],'\n')
         if rtot[i] > rbest
             Qbest = deepcopy(Q)
-            rbest = copy(rbest)
+            rbest = copy(rtot[i])
             # buffer = []
         # else
         #     Q = deepcopy(Qbest)
         end
 
-        # do your training like this (you may have to adjust some things, and you will have to do this many times):
-        Flux.Optimise.train!(loss, Q, data, opt)
+        # data = rand(buffer, sampleSize)
+        # # do your training like this (you may have to adjust some things, and you will have to do this many times):
+        # Flux.Optimise.train!(loss, Q, data, opt)
 
-        if mod(i,updateQ) == 0
-            Qp = deepcopy(Q)
-        end
+        # if mod(i,updateQ) == 0
+        #     Qp = deepcopy(Q)
+        # end
 
         # eps = max(0.1, eps*0.95)
         # eps = max(0.1, eps*(1-1/epochs))
@@ -155,5 +173,5 @@ display(heatmap(xs, vs, (x, v) -> maximum(Q([x, v])), xlabel="Position (x)", yla
 # 
 # display(render_value(s->maximum(Q(s))))
 
-str = "I'm done!"
-run(`powershell -Command "\$sp = New-Object -ComObject SAPI.SpVoice; \$sp.Speak(\"$str\")"`)
+# str = "All done!"
+# run(`powershell -Command "\$sp = New-Object -ComObject SAPI.SpVoice; \$sp.Speak(\"$str\")"`)
