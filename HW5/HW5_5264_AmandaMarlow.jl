@@ -1,150 +1,159 @@
-using DMUStudent.HW5: HW5, mc
+using DMUStudent.HW5: HW5, mc, RL
 using QuickPOMDPs: QuickPOMDP
 using POMDPTools: Deterministic, Uniform, SparseCat, FunctionPolicy, RolloutSimulator
 using Statistics: mean
 import POMDPs
 
-using Plots: scatter, scatter!, plot, plot!
+using Plots
+using DMUStudent
+using CommonRLInterface
 using Flux
-using StaticArrays
-using Random: randperm
-# using IJulia
+using CommonRLInterface.Wrappers: QuickWrapper
+# using VegaLite
+# using ElectronDisplay # not needed if you're using a notebook or something that can display graphs
+# using DataFrames: DataFrame
+
 
 ############
-# Question 1
+# Question 3
 ############
 
-# cancerTreatment = QuickPOMDP(
-#     states = [:healthy, :inSitu, :invasive, :death],
-#     actions = [:wait, :test, :treat],
-#     observations = [:positive, :negative],
+# The following are some basic components needed for DQN
 
-#     # transition should be a function that takes in s and a and returns the distribution of s'
-#     transition = function (s, a)
-#         if s == :healthy
-#             return SparseCat([:healthy, :inSitu], [0.98, 0.02])
-#         elseif s == :inSitu
-#             if a == :treat
-#                 return SparseCat([:inSitu, :healthy], [0.4, 0.6])
-#             else
-#                 return SparseCat([:inSitu, :invasive], [0.9, 0.1])
-#             end
-#         elseif s == :invasive
-#             if a == :treat
-#                 return SparseCat([:invasive, :healthy, :death], [0.6, 0.2, 0.2])
-#             else
-#                 return SparseCat([:invasive, :death], [0.4, 0.6])
-#             end
-#         else
-#             return Deterministic(s)
-#         end
-#     end,
+# Override to a discrete action space, and position and velocity observations rather than the matrix.
+env = QuickWrapper(HW5.mc,
+                   actions=[-1.0, -0.5, 0.0, 0.5, 1.0],
+                   observe=mc->observe(mc)[1:2]
+                  )
+# env = QuickWrapper(HW5.mc,
+#                    actions=[-1.0, 1.0],
+#                    observe=mc->observe(mc)[1:2]
+#                   )
 
-#     # observation should be a function that takes in s, a, and sp, and returns the distribution of o
-#     observation = function (s, a, sp)
-#         if a == :test
-#             if sp == :healthy
-#                 return SparseCat([:positive, :negative], [0.05, 0.95])
-#             elseif sp == :inSitu
-#                 return SparseCat([:positive, :negative], [0.8, 0.2])
-#             elseif sp == :invasive
-#                 # return Deterministic(:positive)
-#                 return Uniform([:positive])
-#             end
-#         elseif a == :treat && (sp == :inSitu || sp == :invasive)
-#                 # return Deterministic(:positive)
-#                 return Uniform([:positive])
-#         else
-#             return Deterministic(:negative)
-#             # return Uniform([:negative])
-#         end
-#     end,
-
-#     reward = function (s, a)
-#         if s == :death
-#             return 0.0
-#         else
-#             if a == :wait
-#                 return 1.0
-#             elseif a == :test
-#                 return 0.8
-#             elseif a == :treat
-#                 return 0.1
-#             end
-#         end
-#     end,
-
-#     initialstate = Deterministic(:healthy),
-
-#     discount = 0.99
-# )
-
-# # evaluate with a random policy
-# policy = FunctionPolicy(o->POMDPs.actions(cancerTreatment)[1])
-# sim = RolloutSimulator(max_steps=100)
-# @show @time mean(POMDPs.simulate(sim, cancerTreatment, policy) for _ in 1:10_000)
-
-############
-# Question 2
-############
-
-n = 100
-dx = rand(Float32,n)
-# dy = sin.(4*pi*dx) + 0.1*randn(n);
-# scatter(dx, dy)
-# dx = LinRange(0.0,1.0,n)
-# dy = (1.0 .− dx).*sin.(20.0*log.(dx .+ 0.2))  + 0.1*randn(Float32, n)
-# f(x) = (1 − x).*sin.(20*log.(x .+ 0.2)) + 0.1*randn(Float32)
-f(x) = (1 − x).*sin.(20*log.(x .+ 0.2))
-dy = f.(dx)
-# dy = sin.(4*pi*dx)
-
-# scatter(dx, dy)
-
-# layerSize = 128
-# layerSize = 64
-layerSize = 50
-# m = Chain(Dense(1=>50,σ), Dense(50=>50,σ), Dense(50=>1))
-# m = Chain(Dense(1=>layerSize,σ), Dense(layerSize=>layerSize,σ), Dense(layerSize=>1))
-m = Chain(Dense(1=>layerSize,relu), Dense(layerSize=>layerSize,relu), Dense(layerSize=>1))
-# m = Chain(Dense(1=>25,relu), Dense(25=>50,relu), Dense(50=>1))
-
-# loss(x, y) = Flux.mse(m(x), y)
-loss(x, y) = sum((m(x) .-y).^2)
-
-data = [(SVector(dx[i]), SVector(dy[i])) for i in 1:length(dx)]
-# data = [(SVector(x[i]), SVector(y[i])) for i in 1:length(x)]
-
-# for i in 1:2000
-#     Flux.train!(loss, Flux.params(m), data, Adam())
-#     if i%50 == 0
-#         p = plot(sort(dx), x->(sin(4*pi*x)), label="sin(4π x)")
-#         plot!(p, sort(dx), first.(m.(SVector.(sort(dx)))), label="NN approximation")
-#         scatter!(p, dx, dy, label="data")
-#         display(i)
-#         display(p)
-#     end
-# end
-
-epochs = 10000
-losses = Array{Float32}(undef,epochs)
-for i in 1:epochs
-    # Flux.train!(loss, Flux.params(m), data, Descent(0.1))
-    Flux.train!(loss, Flux.params(m), data, Adam())
-    losses[i] = mean(loss.(SVector.(dx), dy))
-    if i%50 == 0
-        p = plot(sort(dx), x->((1 .−x).*sin.(20*log.(x .+0.2))), label=" (1−x)sin(20log(x+0.2))")
-        plot!(p, sort(dx), first.(m.(SVector.(sort(dx)))), label="NN approximation")
-        scatter!(p, dx, dy, label="data")
-        display(i)
-        display(p)
+function epsGreedy(env, eps, Qs)
+    if rand() < eps
+        a_idx = rand(1:length(actions(env)))
+    else
+        a_idx = argmax(Qs)
     end
+end                  
+
+function dqn(env)
+
+    epochs = 1000
+    updateQ = 10
+    buffSize = 100_000
+    sampleSize = 1000
+    gamma = 0.99
+    eps = 0.5
+
+    # This network should work for the Q function - an input is a state; the output is a vector containing the Q-values for each action 
+    Q = Chain(Dense(2, 128, relu), Dense(128, length(actions(env))))
+    opt = Flux.setup(ADAM(0.005), Q)
+    Qp = deepcopy(Q)
+    Qbest = deepcopy(Q)
+    rbest = 0.0
+    buffer = []
+    rtot = []
+    steps = 0
+    i = 0
+    # for i = 1:epochs
+    while steps < 50_000
+        i += 1
+        print("epoch = ", i, "\n")
+        RL.reset!(env)
+        done = terminated(env)
+        j = 0
+        while !done && (gamma^j > 0.01)#j < 100_000
+            j += 1
+            steps += 1
+
+            s = observe(env)
+            a_ind = epsGreedy(env, eps, Q(s))
+            r = act!(env, actions(env)[a_ind])
+            sp = observe(env)
+            done = terminated(env)
+
+            experience_tuple = (s, a_ind, r, sp, done)
+
+            # this container should work well for the experience buffer:
+            buffer = push!(buffer, experience_tuple)
+            if length(buffer)>buffSize
+                popfirst!(buffer)
+            end
+
+            eps = max(0.05, eps-(1-0.05)/100_000)
+        end
+        
+        # loss function for Q training here
+        function loss(Q, s, a_ind, r, sp, done)
+            if done
+                return (r - Q(s)[a_ind])^2
+            end
+            return (r + gamma*maximum(Qp(sp)) - Q(s)[a_ind])^2
+        end
+
+        data = rand(buffer, sampleSize)
+
+        push!(rtot, HW5.evaluate(s->actions(env)[argmax(Q(s[1:2]))], n_episodes=100)[1])
+        if rtot[i] > rbest
+            Qbest = deepcopy(Q)
+            rbest = copy(rbest)
+            # buffer = []
+        # else
+        #     Q = deepcopy(Qbest)
+        end
+
+        # do your training like this (you may have to adjust some things, and you will have to do this many times):
+        Flux.Optimise.train!(loss, Q, data, opt)
+
+        if mod(i,updateQ) == 0
+            Qp = deepcopy(Q)
+        end
+
+        # eps = max(0.1, eps*0.95)
+        # eps = max(0.1, eps*(1-1/epochs))
+    end
+    p = plot(1:length(rtot), rtot, label="rtot")
+    display(p)
+    return Qbest
 end
 
-plot(losses)
+@time begin
+Q = dqn(env)
+end
 
-xplot = collect(LinRange(0.0,1.0,n))
-yplot = first.(m.(SVector.(sort(xplot))))
-trainedPlot = plot(xplot, x->((1 .−x).*sin.(20*log.(x .+0.2))), label=" (1−x)sin(20log(x+0.2))")
-plot!(trainedPlot, xplot, yplot, label="Trained NN approximation")
+# @show HW5.evaluate(s->actions(env)[argmax(Q(s[1:2]))], n_episodes=100) # you will need to remove the n_episodes=100 keyword argument to create a json file; evaluate needs to run 10_000 episodes to produce a json
+@show HW5.evaluate(s->actions(env)[argmax(Q(s[1:2]))], "amanda.marlow@colorado.edu") # you will need to remove the n_episodes=100 keyword argument to create a json file; evaluate needs to run 10_000 episodes to produce a json
 
+#----------
+# Rendering
+#----------
+
+# # You can show an image of the environment like this (use ElectronDisplay if running from REPL):
+# display(render(env))
+
+# The following code allows you to render the value function
+using Plots
+xs = -3.0f0:0.1f0:3.0f0
+vs = -0.3f0:0.01f0:0.3f0
+display(heatmap(xs, vs, (x, v) -> maximum(Q([x, v])), xlabel="Position (x)", ylabel="Velocity (v)", title="Max Q Value"))
+
+
+# function render_value(value)
+#     xs = -3.0:0.1:3.0
+#     vs = -0.3:0.01:0.3
+# 
+#     data = DataFrame(
+#                      x = vec([x for x in xs, v in vs]),
+#                      v = vec([v for x in xs, v in vs]),
+#                      val = vec([value([x, v]) for x in xs, v in vs])
+#     )
+# 
+#     data |> @vlplot(:rect, "x:o", "v:o", color=:val, width="container", height="container")
+# end
+# 
+# display(render_value(s->maximum(Q(s))))
+
+str = "I'm done!"
+run(`powershell -Command "\$sp = New-Object -ComObject SAPI.SpVoice; \$sp.Speak(\"$str\")"`)
