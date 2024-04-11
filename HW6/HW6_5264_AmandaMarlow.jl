@@ -6,6 +6,7 @@ using POMDPModels: TigerPOMDP, TIGER_LEFT, TIGER_RIGHT, TIGER_LISTEN, TIGER_OPEN
 using NativeSARSOP: SARSOPSolver
 using POMDPTesting: has_consistent_distributions
 using LinearAlgebra
+using Plots
 
 ##################
 # Problem 1: Tiger
@@ -24,9 +25,13 @@ function POMDPs.update(up::HW6Updater, b::DiscreteBelief, a, o)
     bp_vec[1] = 1.0
 
     for i in 1:length(states(up.m))
-        s = states(up.m)[i]
         sp = states(up.m)[i]
-        bp_vec[i] = Z(up.m, a, sp, o)*sum(T(up.m, s, a, sp))
+        total = 0
+        for j in 1:length(states(up.m))
+            s = states(up.m)[j]
+            total += T(up.m, s, a, sp)*b.b[j]
+        end
+        bp_vec[i] = Z(up.m, a, sp, o)*total
     end
     bp_vec = bp_vec./sum(bp_vec)
     return DiscreteBelief(up.m, bp_vec)
@@ -117,12 +122,23 @@ function qmdp_solve(m, discount=discount(m))
         alphas[i] = R[a] + discount*(T[a]*V)
     end
     # @show alphas
-    acts = A
+    # acts = A
+    acts = collect(ordered_actions(m))
     # @show acts
     # @show alphas
     return HW6AlphaVectorPolicy(alphas, acts)
 end
 
+function get_mean_SEM(data::Vector{Float64})
+    n = length(data)
+    # Calculate the mean and standard deviation
+    mean_value = mean(data)
+    std_dev = std(data)  
+    # Calculate the standard error of the mean
+    sem = std_dev / sqrt(n)
+
+    return mean_value, sem
+end
 
 m = TigerPOMDP()
 
@@ -131,9 +147,16 @@ qmdp_p = qmdp_solve(m)
 sarsop_p = solve(SARSOPSolver(), m)
 up = HW6Updater(m)
 
-@show mean(simulate(RolloutSimulator(max_steps=500), m, qmdp_p, up) for _ in 1:5000)
-# @show mean(simulate(RolloutSimulator(max_steps=500), m, qmdp_p, DiscreteUpdater(m)) for _ in 1:5000)
-@show mean(simulate(RolloutSimulator(max_steps=500), m, sarsop_p, up) for _ in 1:5000)
+# @show mean(simulate(RolloutSimulator(max_steps=500), m, qmdp_p, up) for _ in 1:5000)
+# # @show mean(simulate(RolloutSimulator(max_steps=500), m, qmdp_p, DiscreteUpdater(m)) for _ in 1:5000)
+# @show mean(simulate(RolloutSimulator(max_steps=500), m, sarsop_p, up) for _ in 1:5000)
+
+
+# p = plot(xlabel="b(TL)")
+# for i in 1:length(collect(actions(m)))
+#     plot!(p, qmdp_alphas[i])
+# end
+
 
 # ###################
 # # Problem 2: Cancer
@@ -141,36 +164,98 @@ up = HW6Updater(m)
 
 # cancer = QuickPOMDP(
 
-#     # Fill in your actual code from last homework here
+cancer = QuickPOMDP(
+    states = [:healthy, :inSitu, :invasive, :death],
+    actions = [:wait, :test, :treat],
+    observations = [true, false],
 
-#     states = [:healthy, :in_situ, :invasive, :death],
-#     actions = [:wait, :test, :treat],
-#     observations = [true, false],
-#     transition = (s, a) -> Deterministic(s),
-#     observation = (a, sp) -> Deterministic(false),
-#     reward = (s, a) -> 0.0,
-#     discount = 0.99,
-#     initialstate = Deterministic(:death),
-#     isterminal = s->s==:death,
-# )
+    # transition should be a function that takes in s and a and returns the distribution of s'
+    transition = function (s, a)
+        if s == :healthy
+            return SparseCat([:healthy, :inSitu], [0.98, 0.02])
+        elseif s == :inSitu
+            if a == :treat
+                return SparseCat([:inSitu, :healthy], [0.4, 0.6])
+            else
+                return SparseCat([:inSitu, :invasive], [0.9, 0.1])
+            end
+        elseif s == :invasive
+            if a == :treat
+                return SparseCat([:invasive, :healthy, :death], [0.6, 0.2, 0.2])
+            else
+                return SparseCat([:invasive, :death], [0.4, 0.6])
+            end
+        else
+            return Deterministic(s)
+        end
+    end,
 
-# @assert has_consistent_distributions(cancer)
+    # observation should be a function that takes in s, a, and sp, and returns the distribution of o
+    observation = function (a, sp)
+        if a == :test
+            if sp == :healthy
+                return SparseCat([true, false], [0.05, 0.95])
+            elseif sp == :inSitu
+                return SparseCat([true, false], [0.8, 0.2])
+            else sp == :invasive
+                # return Uniform([true])
+                return Deterministic(true)
+            end
+        elseif (a == :treat) && (sp == :inSitu || sp == :invasive)
+                # return Uniform([true])
+                return Deterministic(true)
+        else
+            return Deterministic(false)
+        end
+    end,
 
-# qmdp_p = qmdp_solve(cancer)
-# sarsop_p = solve(SARSOPSolver(), cancer)
-# up = HW6Updater(cancer)
+    reward = function (s, a)
+        if s == :death
+            return 0.0
+        else
+            if a == :wait
+                return 1.0
+            elseif a == :test
+                return 0.8
+            elseif a == :treat
+                return 0.1
+            end
+        end
+    end,
 
-# heuristic = FunctionPolicy(function (b)
+    discount = 0.99, 
+    initialstate = Deterministic(:healthy), 
+    isterminal = s->s==:death, 
+)
 
-#                                # Fill in your heuristic policy here
-#                                # Use pdf(b, s) to get the probability of a state
+@assert has_consistent_distributions(cancer)
 
-#                                return :wait
-#                            end
-#                           )
+qmdp_p = qmdp_solve(cancer)
+sarsop_p = solve(SARSOPSolver(), cancer)
+up = HW6Updater(cancer)
 
-# @show mean(simulate(RolloutSimulator(), cancer, qmdp_p, up) for _ in 1:1000)     # Should be approximately 66
-# @show mean(simulate(RolloutSimulator(), cancer, heuristic, up) for _ in 1:1000)
+heuristic = FunctionPolicy(function (b)
+    healthy_test_rate = 0.3
+
+    # if rand(Float64) > 0.5
+    #     return qmdp_solve(cancer)(b)
+    # else
+        if pdf(b,:healthy) > 0.95 
+            if rand(Float64) < healthy_test_rate
+                return :test
+            end
+            return :wait
+        elseif pdf(b,:healthy) > 0.4
+            return :test
+        else pdf(b, :invasive) + pdf(b, :inSitu) > 0.2
+                return :treat
+        end
+    # end
+end
+)
+
+@show mean(simulate(RolloutSimulator(), cancer, qmdp_p, up) for _ in 1:1000)     # Should be approximately 66
+@show mean(simulate(RolloutSimulator(), cancer, heuristic, up) for _ in 1:1000)
 # @show mean(simulate(RolloutSimulator(), cancer, sarsop_p, up) for _ in 1:1000)   # Should be approximately 79
 
 # #####################
@@ -198,13 +283,13 @@ up = HW6Updater(m)
 
 # @show HW6.evaluate((pomcp_p, up), n_episodes=100)
 
-# # When you get ready to submit, use this version with the full 1000 episodes
-# # HW6.evaluate((qmdp_p, up), "REPLACE_WITH_YOUR_EMAIL@colorado.edu")
+# When you get ready to submit, use this version with the full 1000 episodes
+# HW6.evaluate((qmdp_p, up), "REPLACE_WITH_YOUR_EMAIL@colorado.edu")
 
-# #----------------
-# # Visualization
-# # (all code below is optional)
-# #----------------
+#----------------
+# Visualization
+# (all code below is optional)
+#----------------
 
 # # You can make a gif showing what's going on like this:
 # using POMDPGifs
