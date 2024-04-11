@@ -9,26 +9,18 @@ using DMUStudent
 using CommonRLInterface
 using Flux
 using CommonRLInterface.Wrappers: QuickWrapper
-# using VegaLite
-# using ElectronDisplay # not needed if you're using a notebook or something that can display graphs
-# using DataFrames: DataFrame
 
 
 ############
 # Question 3
 ############
 
-# The following are some basic components needed for DQN
-
 # Override to a discrete action space, and position and velocity observations rather than the matrix.
 env = QuickWrapper(HW5.mc,
                    actions=[-1.0, -0.5, 0.0, 0.5, 1.0],
                    observe=mc->observe(mc)[1:2]
                   )
-# env = QuickWrapper(HW5.mc,
-#                    actions=[-1.0, 1.0],
-#                    observe=mc->observe(mc)[1:2]
-#                   )
+
 
 function epsGreedy(env, eps, Qs)
     if rand() < eps
@@ -101,15 +93,6 @@ function dqn(env)
 
             eps = max(0.05, eps-(1-0.05)/100_000)
         end
-        
-        # loss function for Q training here
-        # function loss(Q, s, a_ind, r, sp, done)
-        #     if done
-        #         return (r - Q(s)[a_ind])^2
-        #     end
-        #     return (r + gamma*maximum(Qp(sp)) - Q(s)[a_ind])^2
-        # end
-
 
         push!(rtot, HW5.evaluate(s->actions(env)[argmax(Q(s[1:2]))], n_episodes=100)[1])
         print(rtot[i],'\n')
@@ -117,20 +100,7 @@ function dqn(env)
             Qbest = deepcopy(Q)
             rbest = copy(rtot[i])
             buffer = []
-        # else
-        #     Q = deepcopy(Qbest)
         end
-
-        # data = rand(buffer, sampleSize)
-        # # do your training like this (you may have to adjust some things, and you will have to do this many times):
-        # Flux.Optimise.train!(loss, Q, data, opt)
-
-        # if mod(i,updateQ) == 0
-        #     Qp = deepcopy(Q)
-        # end
-
-        # eps = max(0.1, eps*0.95)
-        # eps = max(0.1, eps*(1-1/epochs))
     end
     p = plot(1:length(rtot), rtot, label="rtot")
     display(p)
